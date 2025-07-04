@@ -1,0 +1,108 @@
+---
+toc: false
+---
+
+```{r}
+#| warning: false
+#| message: false
+knitr::opts_chunk$set(
+  warning = FALSE, message = FALSE, fig.width = 6, fig.height = 6
+)
+library(tidyverse)
+library(rprojroot)
+root <- find_root_file(criterion = has_file("prioritering-soorten-monitoring.Rproj"))
+data_vb <- 
+  tibble(soort = c("S1","S2","S3","S4","S5","S6","S7"),
+         criterium_1 = c(1, 1, 3, 2, 5, 4, 2),
+         criterium_2 = c(560, 822, 123, 489, 999, 756, 145),
+         kost = c(2569, 4568798, 116548, 44557, 3256, 587445, 56984))
+```
+
+# Methodologie
+
+Zoals weergegeven in @fig-flowchart, starten we met een selectie van relevante criteria om het belang van monitoring van verschillende soorten tegen elkaar af te wegen.
+In @sec-criteria doen we reeds enkele suggesties voor criteria en bieden we ondersteuning om iedere soort een score te geven voor ieder van de criteria.
+Samen met een kosteninschatting voor de monitoring van ieder van de soorten, bepalen we in @sec-dea welke soorten het interessantst / efficientst zijn om te monitoren.
+We zullen het monitoren van een soort "efficient" noemen indien de soort heel belangrijk is om te monitoren en de kosten van monitoring niet te hoog zijn.
+Een monitoring is dus "efficient" als we, voor iedere euro die we investeren in monitoring, veel belangrijke kennis vergaren.
+Tot slot moet er een keuze gemaakt worden van welke soorten we zullen selecteren om te monitoren indien we slechts een beperkt budget ter beschikking hebben.
+In @sec-mip beschrijven we een methode om deze keuze te maken.
+
+```{r}
+#| label: fig-flowchart
+#| fig-cap: "Stappen om tot een selectie van soorten te komen."
+
+
+library(Gmisc, quietly = TRUE)
+library(glue)
+library(htmlTable)
+library(grid)
+library(magrittr)
+
+criteria <- boxGrob("Selectie relevante criteria",
+                    txt_gp = gpar(fontsize = 8))
+criteria_scores <- boxGrob(glue("Bepaal score van iedere soort",
+                          "voor ieder criterium.",
+                           .sep = "\n"),
+                    txt_gp = gpar(fontsize = 8))
+monitoring_kost <- boxGrob(glue("Bepaal voor iedere soort",
+                          "de kost voor monitoring.",
+                           .sep = "\n"),
+                    txt_gp = gpar(fontsize = 8))
+dea <- boxGrob("Prioriteer soortenmonitoring",
+                    txt_gp = gpar(fontsize = 8))
+mip <- boxGrob(glue("Selecteer soortenmonitoring",
+                      "binnen beperkt budget.",
+                      .sep = "\n"),
+                    txt_gp = gpar(fontsize = 8))
+
+
+grid.newpage()
+vert <- spreadVertical(criteria = criteria,
+                       criteria_scores = criteria_scores,
+                       dea = dea,
+                       mip = mip)
+grps <- alignVertical(reference = vert$criteria_scores,
+                      criteria_scores, monitoring_kost) %>%
+  spreadHorizontal()
+grps$reference <- NULL
+
+
+for (i in 1:(length(vert) - 1)) {
+  connectGrob(vert[[i]], vert[[i + 1]], type = "vert") %>%
+    print
+}
+#connectGrob(vert$criteria, grps[[1]], type = "N")
+#connectGrob(vert$included, grps[[2]], type = "N")
+
+connectGrob(grps[[2]],vert$dea, type = "N")
+
+# Print boxes
+vert
+grps[[2]]
+```
+
+In de rest van het rapport zal een fictief, simpel voorbeeld gebruikt worden om de procedure te verduidelijken.
+In het voorbeeld gebruiken we slechts twee criteria om het belang van monitoring van ieder van de soorten tegen elkaar af te wegen.
+De schaal doet er op dit moment niet echt toe.
+Indien een soort een hogere score heeft op een criterium, dan wil dit zeggen dat ze volgens dat criterium belangrijker zijn om te monitoren.
+Daarnaast maken we voor ieder van de soorten ook een inschatting van hoe veel een monitoring zou kosten (bijvoorbeeld in euro's).
+
+```{r}
+#| label: tbl-vb
+#| tbl-cap: "Een voorbeeld dataset."
+data_vb %>%
+  knitr::kable()
+```
+
+\pagebreak
+
+## Selectie relevante criteria {#sec-criteria}
+
+## Prioriteiren van soortenmonitoring {#sec-dea}
+
+{{< include _methodologie-DEA.qmd >}}
+
+## Selectie van soortenmonitoring binnen een beperkt budget {#sec-mip}
+
+{{< include _methodologie-MIP.qmd >}}

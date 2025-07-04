@@ -4,4 +4,7 @@ toc: false
 
 # Inleiding
 
-**TO DO**
+In dit rapport beschrijven we een procedure om de monitoring van soorten allereerst te prioriteren en een finale keuze te maken over welke soorten gemonitord zullen worden, binnen een beperkt budget.
+
+Het rapport begint met een selectie van relevante criteria om het belang van monitoring van soorten tegen elkaar af te wegen.
+Deze criteria zijn best zo objectief mogelijk en laten bij voorkeur weinig ruimte voor persoonlijke (subjectieve) voor bepaalde soorten.

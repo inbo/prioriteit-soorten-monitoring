@@ -19,3 +19,5 @@ LineEndingConversion: Posix
 MarkdownWrap: Sentence
 MarkdownReferences: Document
 MarkdownCanonical: Yes
+
+SpellingDictionary: nl_NL

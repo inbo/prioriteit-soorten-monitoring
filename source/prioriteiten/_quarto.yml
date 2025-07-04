@@ -74,9 +74,10 @@ book:
     - text: Inleiding
       file: inleiding.md
   chapters:
-  - index.md
+  - index.qmd
   - abstract.md
   - aanbevelingen.md
   - inleiding.md
+  - methodologie.qmd
   - referenties.md
 bibliography: references.bib
