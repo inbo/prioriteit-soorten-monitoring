@@ -6,16 +6,17 @@ toc: false
 #| warning: false
 #| message: false
 knitr::opts_chunk$set(
-  warning = FALSE, message = FALSE, fig.width = 6, fig.height = 6
+  warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4
 )
 library(tidyverse)
 library(rprojroot)
+library(deaR)
 root <- find_root_file(criterion = has_file("prioritering-soorten-monitoring.Rproj"))
 data_vb <- 
   tibble(soort = c("S1","S2","S3","S4","S5","S6","S7"),
          criterium_1 = c(1, 1, 3, 2, 5, 4, 2),
          criterium_2 = c(560, 822, 123, 489, 999, 756, 145),
-         kost = c(2569, 4568798, 116548, 44557, 3256, 587445, 56984))
+         kost = c(10, 20, 25, 30, 20, 40, 60))
 ```
 
 # Methodologie
@@ -99,7 +100,45 @@ data_vb %>%
 
 ## Selectie relevante criteria {#sec-criteria}
 
-## Prioriteiren van soortenmonitoring {#sec-dea}
+We zoeken allereerst criteria die een objectieve inschatting kunnen geven van het belang van monitoring van een soort.
+
+Wij suggereren alvast de volgende criteria maar gaan graag in overleg met soortenexperts:
+
+-   Globale rode lijst status
+-   Lokale rode lijst status
+    -   Gevalideerde Rode Lijsten Vlaanderen ([GBIF](https://www.gbif.org/dataset/fc18b0b1-8777-4c8a-8cb8-f9f15870d6a9))
+    -   Niet-gevalideerde Rode Lijsten Vlaanderen ([GBIF](https://www.gbif.org/dataset/2fc23906-38f3-4bb6-a4a4-4dad908602a2))
+-   Status in de wetgeving
+    -   Habitatrichtlijn bijlage 2
+    -   Habitatrichtlijn bijlage 4
+    -   Vogelrichtlijn
+    -   Soortenbesluit
+-   Huidige instandhoudingsmaatregelen
+-   Huidige investeringen in monitoring
+-   Synergieën met andere soorten
+
+De *rode lijst status* dient nog vertaald te worden naar belang van monitoring, in samenspraak met experts.
+Zo is het mogelijk dat best mogelijk dat we het belangrijker vinden om een soort te monitoren die het moeilijk heeft dan een soort die niet bedreigd is.
+Hoe veel belangrijker (2x, 3x, ...?) is het om een bedreigde soort te monitoren dan een kwetsbare soort?
+Hoe veel belangrijker is het om een ernstig bedreigde soort te monitoren?
+Tegelijkertijd moeten we ons ook de vraag stellen of het nuttig (belangrijk) is om een soort te monitoren die regionaal uitgestorven is.
+Een nuttige techniek om deze vertaalslag te maken is het Analytisch Hiërarchisch Proces (AHP, @SAATY1987161)
+
+De *huidige instandhoudingsmaatregelen* en *huidige investeringen in monitoring* zouden kunnen uitgedrukt worden in euro's of op een soort likert schaal van "geen" of "weinig" tot "heel veel".
+De intuitie is dat het interessanter/belangrijker is om soorten te monitoren waar we al veel tijd/geld in investeren.
+
+*Synergieën* met andere soorten zouden ook uitgedrukt kunnen worden in een soort likert schaal.
+Een monitoring voor soorten met geen/weinig synergieën met andere soorten wordt typisch enkel voor deze soort opgezet.
+We leren weinig of niets over andere soorten en het meetnet / de benodigde apparatuur /...
+kan niet ingezet worden voor andere soorten.
+Omgekeerd, een monitoring voor soorten met veel synergieën zal grotendeels identiek zijn aan de monitoring die nodig is voor andere soorten, vaak binnen dezelfde soortengroep.
+Als we een monitoring voor deze soort opzetten, zullen we een groot deel kunnen hergebruiken voor andere, gelijkaardige soorten.
+
+Tot slot is het ook belangrijk om bij ieder van de criteria na te denken over hoe we omgaan met *ontbrekende gegevens*.
+Wat als de rode lijst status van een soort niet gekend is?
+Wat als we niet op de hoogte zijn van de huidige instandhoudingsmaatregelen?
+
+## Prioriteren van soortenmonitoring {#sec-dea}
 
 {{< include _methodologie-DEA.qmd >}}
 

@@ -1,2 +1,71 @@
-test1
+Het is mogelijk dat een soort die belangrijk is om op te volgen volgens één criterium net minder belangrijk is volgens een ander criterium.
+De verschillende criteria manueel met elkaar afwegen voor veel verschillende soorten kan al snel heel complex worden.
 
+Om de soorten te prioriteren, gebruiken we daarom een benchmarking techniek die met vele criteria tegelijk kan regening houden, "Data Envelopment Analysis (DEA)" [@CHARNES1978429; @cooperdea].
+DEA wordt typisch in een bedrijfscontext gebruikt om de efficiëntie van verschillende **decision making units (DMUs)** (bijvoorbeeld bedrijfstakken) in te schatten.
+Een bedrijfstak is efficienter indien ze er in slaagt om minder **inputs** (personeel, investeringen in vastgoed, marketing investeringen,...) om te zetten in zo veel mogelijk **outputs** (omzet, winst, aanzien, aantal transacties,...).
+Een DMU is 100% efficient als, volgens de data, het onmogelijk is om een input of output te verbeteren zonder in te boeten op andere inputs of outputs.
+
+In onze context, zijn de *DMUs* de soorten.
+De *inputs* zijn bijvoorbeeld de kosten om een monitoring op te starten en uit te voeren.
+Ze kunnen uitgedrukt worden in euro's maar het zou bijvoorbeeld ook mogelijk zijn om VTE's te kiezen of een ordinale variabele van "heel weinig werk" tot "heel veel werk".
+De *outputs* zijn wat we uit de monitoring kunnen halen.
+Dit is iets abstracter en zal worden ingeschat door de verschillende criteria die beschreven zijn in @sec-criteria.
+
+We passen een simpel DEA model toe op onze voorbeeld dataset met 7 DMU's (soort S1 tot S7), twee outputs (criterium_1 en criterium_2) en 1 input (kost).
+Deze kleine dataset kunnen we visueel weergeven (#fig-dea).
+Op de y-as tonen we hoeveel we betalen per eenheid van criterium 1 en op de x-as tonen we hoeveel we betalen per eenheid van criterium 2.
+We zien meteen dat soort S5 het meeste opbrengt, per geinvesteerde euro, op vlak van criterium 1 en soort S1 brengt het meeste op, per geinvesteerde euro, op vlak van criterium2.
+De blauwe lijn toont de "efficient frontier"; soorten op deze grens zijn efficient.
+Hoe verder een soort verwijderd is van de efficient frontier, hoe minder efficient de soort is.
+Soort S7 is erg duur voor beide criteria.
+
+```{r}
+#| label: fig-dea
+#| fig-cap: "Grafische weergave van de efficientie van soorten."
+
+#voorbeeld https://github.com/rbensua/deaR
+ccr <- deaR::make_deadata(
+  data_vb,
+  ni = 1, no = 2, dmus = 1, inputs = 4, outputs = 2:3)
+model <- deaR::model_basic(ccr, rts = "crs", orientation = "io")
+efficiency <- deaR::efficiencies(model)
+# build the efficient frontier for the plot
+eff_frontier <- data_vb[round(efficiency,6) == 1, ] %>%
+  mutate(x = criterium_2/kost, y = criterium_1/kost) %>%
+  dplyr::select(x, y)
+eff_frontier <- eff_frontier %>%
+  rbind(tibble(x = c(0, max(eff_frontier$x)),
+               y = c(max(eff_frontier$y), 0))) %>%
+  arrange(x)
+eff_frontier <- eff_frontier %>%
+  mutate(xend = data.table::shift(eff_frontier$x, n=1, type = "lead"),
+         yend = data.table::shift(eff_frontier$y, n=1, type = "lead")) %>%
+  dplyr::filter(!is.na(xend))
+
+ggplot() +
+  geom_segment(data = eff_frontier, aes(x=x, y=y, xend = xend, yend = yend),
+               color = INBOtheme::inbo_palette(1)) +
+  geom_text(data = data_vb, aes(label = soort, x = criterium_2/kost,
+                         y = criterium_1/kost),
+            color = "black") +
+  theme_bw() +
+  xlab("criterium_2/kost") +
+  ylab("criterium_1/kost")
+```
+
+Zodra er meer dan twee inputs en/of outputs zijn, is het niet meer mogelijk om de efficientie analyse grafisch weer te geven zoals in #fig-dea.
+Een DEA analyse laat echter wel toe om voor iedere DMU een efficiëntie score te berekenen, zelfs indien er heel veel verschillende inputs en outputs zijn.
+Deze efficientie score kan gezien worden als een samenvatting van hoe efficient we voordeel kunnen halen uit een monitoring van een soort voor iedere euro die we in de monitoring investeren.
+In het simpele DEA model, ligt efficiëntie score steeds tussen 0 en 1.
+Hoe hoger de score, hoe hoger de efficiëntie.
+In @tbl-dea tonen we de efficientie score voor onze voorbeeld dataset.
+
+```{r}
+#| label: tbl-dea
+#| tbl-cap: "Ruwe data en efficiëntie score per soort."
+
+data_vb <- data_vb %>%
+  mutate(efficientie = unname(unlist(efficiency)))
+data_vb %>% knitr::kable(digits = 3)
+```
