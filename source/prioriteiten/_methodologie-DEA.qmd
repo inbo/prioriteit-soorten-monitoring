@@ -1,13 +1,13 @@
 Het is mogelijk dat een soort die belangrijk is om op te volgen volgens één criterium net minder belangrijk is volgens een ander criterium.
 De verschillende criteria manueel met elkaar afwegen voor veel verschillende soorten kan al snel heel complex worden.
 
-Om de soorten te prioriteren, gebruiken we daarom een benchmarking techniek die met vele criteria tegelijk kan regening houden, "Data Envelopment Analysis (DEA)" [@CHARNES1978429; @cooperdea].
+Om de soorten te prioriteren, gebruiken we daarom een benchmarking techniek die met vele criteria tegelijk kan rekening houden, "Data Envelopment Analysis (DEA)" [@CHARNES1978429; @cooperdea].
 DEA wordt typisch in een bedrijfscontext gebruikt om de efficiëntie van verschillende **decision making units (DMUs)** (bijvoorbeeld bedrijfstakken) in te schatten.
-Een bedrijfstak is efficienter indien ze er in slaagt om minder **inputs** (personeel, investeringen in vastgoed, marketing investeringen,...) om te zetten in zo veel mogelijk **outputs** (omzet, winst, aanzien, aantal transacties,...).
+Een DMU/bedrijfstak is efficiënter indien ze er in slaagt om minder met minder **inputs** (personeel, investeringen in vastgoed, marketing investeringen,...) meer **outputs** (omzet, winst, aanzien, aantal transacties,...) te genereren dan de andere DMUs/bedrijfstakken.
 Een DMU is 100% efficient als, volgens de data, het onmogelijk is om een input of output te verbeteren zonder in te boeten op andere inputs of outputs.
 
 In onze context, zijn de *DMUs* de soorten.
-De *inputs* zijn bijvoorbeeld de kosten om een monitoring op te starten en uit te voeren.
+De *inputs* zijn bijvoorbeeld de kosten (opstartkosten, recurrente kosten,...) om een monitoring op te starten en uit te voeren.
 Ze kunnen uitgedrukt worden in euro's maar het zou bijvoorbeeld ook mogelijk zijn om VTE's te kiezen of een ordinale variabele van "heel weinig werk" tot "heel veel werk".
 De *outputs* zijn wat we uit de monitoring kunnen halen.
 Dit is iets abstracter en zal worden ingeschat door de verschillende criteria die beschreven zijn in @sec-criteria.
@@ -15,9 +15,9 @@ Dit is iets abstracter en zal worden ingeschat door de verschillende criteria di
 We passen een simpel DEA model toe op onze voorbeeld dataset met 7 DMU's (soort S1 tot S7), twee outputs (criterium_1 en criterium_2) en 1 input (kost).
 Deze kleine dataset kunnen we visueel weergeven (#fig-dea).
 Op de y-as tonen we hoeveel we betalen per eenheid van criterium 1 en op de x-as tonen we hoeveel we betalen per eenheid van criterium 2.
-We zien meteen dat soort S5 het meeste opbrengt, per geinvesteerde euro, op vlak van criterium 1 en soort S1 brengt het meeste op, per geinvesteerde euro, op vlak van criterium2.
-De blauwe lijn toont de "efficient frontier"; soorten op deze grens zijn efficient.
-Hoe verder een soort verwijderd is van de efficient frontier, hoe minder efficient de soort is.
+We zien meteen dat soort S5 het meeste opbrengt, per geïnvesteerde euro, op vlak van criterium 1 en soort S1 brengt het meeste op, per geïnvesteerde euro, op vlak van criterium2.
+De blauwe lijn toont de "efficient frontier"; soorten op deze grens zijn efficiënt.
+Hoe verder een soort verwijderd is van de efficient frontier, hoe minder efficiënt de soort is.
 Soort S7 is erg duur voor beide criteria.
 
 ```{r}
@@ -54,12 +54,12 @@ ggplot() +
   ylab("criterium_1/kost")
 ```
 
-Zodra er meer dan twee inputs en/of outputs zijn, is het niet meer mogelijk om de efficientie analyse grafisch weer te geven zoals in #fig-dea.
+Zodra er meer dan twee inputs en/of outputs zijn, is het niet meer mogelijk om de efficiëntie analyse grafisch weer te geven zoals in #fig-dea.
 Een DEA analyse laat echter wel toe om voor iedere DMU een efficiëntie score te berekenen, zelfs indien er heel veel verschillende inputs en outputs zijn.
-Deze efficientie score kan gezien worden als een samenvatting van hoe efficient we voordeel kunnen halen uit een monitoring van een soort voor iedere euro die we in de monitoring investeren.
+Deze efficiëntie score kan gezien worden als een samenvatting van hoe efficiënt we voordeel kunnen halen uit een monitoring van een soort voor iedere euro die we in de monitoring investeren.
 In het simpele DEA model, ligt efficiëntie score steeds tussen 0 en 1.
 Hoe hoger de score, hoe hoger de efficiëntie.
-In @tbl-dea tonen we de efficientie score voor onze voorbeeld dataset.
+In @tbl-dea tonen we de efficiëntie score voor ons voorbeeld.
 
 ```{r}
 #| label: tbl-dea
@@ -69,3 +69,9 @@ data_vb <- data_vb %>%
   mutate(efficientie = unname(unlist(efficiency)))
 data_vb %>% knitr::kable(digits = 3)
 ```
+
+De efficiëntie scores vormen nu onze leidraad om soorten te selecteren voor monitoring.
+Soorten met een hoge efficiëntie score zouden ons moeten toelaten om het meeste meerwaarde te creëren met het budget dat we beschikbaar hebben.
+We kunnen soorten met de hoogste efficiëntie selecteren voor monitoring, tot het budget op is.
+Als we een budget hebben van 110, dan selecteren we volgens deze methode (in volgorde van efficiëntie score) S5, S1, S2, en S6 voor een totaal kost van 90.
+Misschien is het echter beter om een duurdere soort (S6) niet te monitoring en te kiezen voor S3 en S4, voor een totaalkost van 105?

@@ -1,1 +1,162 @@
-test1
+De techniek van Lineair Programmeren (LP) laat je toe om een doelfunctie te minimaliseren of maximaliseren onder bepaalde beperkingen.
+In ons voorbeeld zullen we soorten trachten te selecteren die zo hoog mogelijk scoren op onze criteria; dit zetten we in de *doelfunctie*.
+De *beperking* die we opleggen is dat ons budget van bijvoorbeeld 110 niet mag overschreden worden.
+We zouden makkelijk extra beperkingen kunnen toevoegen die bijvoorbeeld opleggen dat er minstens 1 soort binnen een bepaalde soortengroep geselecteerd wordt of dat we minstens $x$ soorten selecteren die ernstig bedreigd zijn selecteren.
+
+De beslissingsvariabelen zijn in ons geval binaire variabelen (ze kunnen enkel de waarde 0 of 1 aannemen) waardoor we een Mixed Integer Programming (MIP) optimalisatiemodel in plaats van een LP definiëren:
+
+Beslissingsvariabelen:
+
+-   $x_i$ is 1 als soort $i$ geselecteerd wordt voor monitoring en anders is $x_i$ gelijk aan 0 $(i \in \{1...7\})$.
+
+Parameters:
+
+-   $s_{ij}$ is de score van soort $i$ op criterium $j$ $(i \in \{1...7\}, j \in \{1,2\})$. Het is aangeraden om alle criteria te herschalen (bijvoorbeeld tussen 0 en 1, @tbl-vb-scaled) zodat de criteria eerlijker tegen elkaar kunnen afgewogen worden.
+-   $w_j$ is het gewicht dat we aan criterium $j$ geven $(j \in \{1,2\})$. Als we criterium $j$ 2 keer zo belangrijk vinden als criterium $j'$, kiezen we bijvoorbeeld $w_j=2, w_{j'}=1$.
+-   $c_i$ is de kost om een monitoring uit te voeren voor soort $i$ $(i \in \{1...7\})$.
+
+```{r}
+#| label: tbl-vb-scaled
+#| tbl-cap: "Het voorbeeld waar de criteria herschaald zijn naar scores tussen 0 en 1."
+data_vb_scaled  <- data_vb %>%
+  mutate(criterium_1 = criterium_1 / max(data_vb$criterium_1),
+         criterium_2 = criterium_2 / max(data_vb$criterium_2)) %>%
+  dplyr::select(-efficientie)
+data_vb_scaled %>%
+  knitr::kable()
+```
+
+MIP:
+
+\begin{equation} 
+\begin{aligned}
+max & \sum_{i, j}(w_{j} * s_{ij} * x_{i})\\
+s.t. & \\
+ & \sum_i c_i * x_i \leq 110 
+\end{aligned}
+\end{equation}
+
+Als we dit MIP optimalisatiemodel oplossen met een gewicht van 1 voor beide criteria, dan krijgen we de oplossing in @tbl-mip-opl.
+We zien dat soort S2, S4, S5 en S6 geselecteerd worden voor monitoring.
+We kunnen nagaan dat de totale kost voor deze monitoring 110 is en dat de budgetbeperking dus gerespecteerd werd.
+
+```{r}
+#| include: false
+
+library(ompr)
+library(ROI)
+library(ROI.plugin.glpk)
+library(ompr.roi)
+nb_soort <- nrow(data_vb_scaled)
+nb_criteria <- sum(str_detect(colnames(data_vb_scaled), "criterium"))
+w <- c(1, 1)
+s <- data_vb_scaled %>%
+  dplyr::select(starts_with("criterium")) %>%
+  as.matrix() %>%
+  unname()
+c <- data_vb_scaled %>%
+  dplyr::pull(kost)
+
+model <- MIPModel() %>% 
+  add_variable(x[i], i = 1:nb_soort, type = "binary") %>%  
+  set_objective(sum_expr(w[j] * s[i, j] * x[i], i = 1:nb_soort,
+                         j = 1:nb_criteria),
+                sense = "max") %>% 
+  add_constraint(sum_expr(x[i] * c[i], i = 1:nb_soort) <= 110)
+
+result <- model %>% 
+  solve_model(with_ROI("glpk", verbose = TRUE))
+```
+
+```{r}
+#| label: tbl-mip-opl
+#| tbl-cap: "MIP oplossing."
+
+data_vb_scaled %>%
+  mutate(geselecteerd = unname(result$solution)) %>%
+  knitr::kable()
+
+```
+
+Ook indien er een complexere kostenstructuur voor monitoring wordt in rekening gebracht, kan het interessant zijn om een mixed integer program (MIP) op te stellen in plaats van de DEA methode te volgen.
+We stellen voor om de kost van monitoring te formuleren als:
+
+-   een vaste kost per monitoringgroep (zowel opstartkosten als kosten om de monitoring de komende jaren uit te voeren).
+-   een bijkomende kost per soort binnen de monitoringgroep
+
+Als concreet voorbeeld kunnen we vleermuizen nemen waarvan er veel soorten tot het soortenbesluit behoren.
+Verschillende vleermuizensoorten bevinden zich typisch in enkele geïsoleerde plekken in Vlaanderen.
+Als we een monitoring opstarten voor één vleermuizensoort, hebben we daar een grote kost voor (uitdenken meetnet, eventueel benodigde materiaal aankopen, veldwerkers ter plekke sturen).
+Echter, aangezien er wellicht een grote overlap is qua methode, materiaal en locaties, is de bijkomende kost voor een tweede soort beperkter.
+We kunnen dus bijvoorbeeld een monitoringgroep definiëren voor enkele vleermuizensoorten met een vaste kost van 20 en een bijkomende kost van 5.
+Een monitoring voor 1 vleermuis uit de groep kost dan 25, 2 vleermuizen kost 30, 3 vleermuizen kost 35,...
+Het is hierbij belangrijk dat een soort slechts tot 1 monitoringgroep hoort.
+Een soortengroep mag ook uit 1 soort bestaan indien er weinig of geen synergieën zijn met andere soorten bij het opstarten van een monitoring.
+
+We kunnen het voorbeeld uitbreiden door, bijvoorbeeld, 3 monitoringgroepen te definiëren met een vaste monitoringskost van 20, 30 en 60.
+De bijkomde kost per soort staat in @tbl-mip-uitbreiding.
+We breiden het LP model uit met de volgende beslissingsvariabelen en variabelen:
+
+-   $y_g$ is een binaire beslissingsvariabelen die 1 is indien we een monitoring opstarten voor monitoringgroep $g$ en anders if $y_g$ gelijk aan 0 $(g \in \{1...3\}$.
+-   $A_{ig}$ is een parameter die 1 is indien soort $i$ tot groep $g$ behoort en anders is $A_{ig}$ gelijk aan 0 $(i \in \{1...7\}, g \in \{1...3\}$.
+-   $cg_{g}$ is een parameter die de vaste kost weergeeft om een monitoring op te starten voor monitoringroep $g$ $(g \in \{1...3\}$.
+-   $c_i$ is nu de bijkomende kost om een monitoring uit te voeren voor soort $i$ $(i \in \{1...7\})$, bovenop de vast kost $cg_g$.
+
+Het model ziet er nu als volgt uit:
+
+\begin{equation} 
+\begin{aligned}
+max & \sum_{i, j}(w_{j} * s_{ij} * x_{i})\\
+s.t. & \\
+ & \sum_i (c_i * x_i) + \sum_g (cg_g * y_g) \leq 110 \\
+ & x_i * A_{ig} \leq  y_g & \forall i, g
+\end{aligned}
+\end{equation}
+
+De nieuwe, tweede beperking zorgt er voor dat $y_g$ gelijk is aan 1 zodra er minstens één $x_i$ voor een soort $i$ binnen de monitoringroep $g$ gelijk is aan 1.
+
+Als we dit MIP optimalisatiemodel oplossen met een gewicht van 1 voor beide criteria, dan krijgen we de oplossing in @tbl-mip-opl.
+We zien dat soort S1, S2, S3, S5 en S6 geselecteerd worden voor monitoring.
+We kunnen nagaan dat de totale kost voor deze monitoring 20+60+3+5+10+5+5+5 = `r 20+60+3+5+10+5+5` is en dat de budgetbeperking dus gerespecteerd werd.
+
+```{r}
+#| include: false
+
+data_vb_scaled <- data_vb_scaled %>%
+  mutate(groep_1 = c(1, 1, 1, 0, 0, 0, 0),
+         groep_2 = c(0, 0, 0, 1, 0, 0, 0),
+         groep_3 = c(0, 0, 0, 0, 1, 1, 1),
+         kost = c(3, 5, 10, 0, 5, 5, 5))
+cg <- c(20, 30, 60)
+A <- data_vb_scaled %>%
+  dplyr::select(starts_with("groep")) %>%
+  as.matrix() %>%
+  unname()
+
+nb_groep <- sum(str_detect(colnames(data_vb_scaled), "groep"))
+c <- data_vb_scaled %>%
+  dplyr::pull(kost)
+
+model <- MIPModel() %>% 
+  add_variable(x[i], i = 1:nb_soort, type = "binary") %>%
+  add_variable(y[g], g = 1:nb_groep, type = "binary") %>% 
+  set_objective(sum_expr(w[j] * s[i, j] * x[i], i = 1:nb_soort,
+                         j = 1:nb_criteria),
+                sense = "max") %>% 
+  add_constraint(sum_expr(x[i] * c[i], i = 1:nb_soort) +
+                   sum_expr(y[g] * cg[g], g = 1:nb_groep) <= 110) %>% 
+  add_constraint(x[i] * A[i, g] <= y[g], i = 1:nb_soort, g = 1:nb_groep)
+
+result <- model %>% 
+  solve_model(with_ROI("glpk", verbose = TRUE))
+
+
+```
+
+```{r}
+#| label: tbl-mip-uitbreiding
+#| tbl-cap: "MIP oplossing voor het model met een uitgebreidere kostenstructuur."
+data_vb_scaled %>%
+  mutate(geselecteerd = unname(result$solution)[1:nb_soort]) %>%
+  knitr::kable()
+```
