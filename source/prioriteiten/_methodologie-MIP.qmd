@@ -18,9 +18,11 @@ Parameters:
 ```{r}
 #| label: tbl-vb-scaled
 #| tbl-cap: "Het voorbeeld waar de criteria herschaald zijn naar scores tussen 0 en 1."
-data_vb_scaled  <- data_vb %>%
-  mutate(criterium_1 = criterium_1 / max(data_vb$criterium_1),
-         criterium_2 = criterium_2 / max(data_vb$criterium_2)) %>%
+data_vb_scaled <- data_vb %>%
+  mutate(
+    criterium_1 = criterium_1 / max(data_vb$criterium_1),
+    criterium_2 = criterium_2 / max(data_vb$criterium_2)
+  ) %>%
   dplyr::select(-efficientie)
 data_vb_scaled %>%
   knitr::kable()
@@ -42,7 +44,6 @@ We kunnen nagaan dat de totale kost voor deze monitoring 110 is en dat de budget
 
 ```{r}
 #| include: false
-
 library(ompr)
 library(ROI)
 library(ROI.plugin.glpk)
@@ -57,14 +58,15 @@ s <- data_vb_scaled %>%
 c <- data_vb_scaled %>%
   dplyr::pull(kost)
 
-model <- MIPModel() %>% 
-  add_variable(x[i], i = 1:nb_soort, type = "binary") %>%  
-  set_objective(sum_expr(w[j] * s[i, j] * x[i], i = 1:nb_soort,
-                         j = 1:nb_criteria),
-                sense = "max") %>% 
+model <- MIPModel() %>%
+  add_variable(x[i], i = 1:nb_soort, type = "binary") %>%
+  set_objective(
+    sum_expr(w[j] * s[i, j] * x[i], i = 1:nb_soort, j = 1:nb_criteria),
+    sense = "max"
+  ) %>%
   add_constraint(sum_expr(x[i] * c[i], i = 1:nb_soort) <= 110)
 
-result <- model %>% 
+result <- model %>%
   solve_model(with_ROI("glpk", verbose = TRUE))
 ```
 
@@ -75,7 +77,6 @@ result <- model %>%
 data_vb_scaled %>%
   mutate(geselecteerd = unname(result$solution)) %>%
   knitr::kable()
-
 ```
 
 Ook indien er een complexere kostenstructuur voor monitoring wordt in rekening gebracht, kan het interessant zijn om een mixed integer program (MIP) op te stellen in plaats van de DEA methode te volgen.
@@ -123,10 +124,12 @@ We kunnen nagaan dat de totale kost voor deze monitoring 20+60+3+5+10+5+5+5 = `r
 #| include: false
 
 data_vb_scaled <- data_vb_scaled %>%
-  mutate(groep_1 = c(1, 1, 1, 0, 0, 0, 0),
-         groep_2 = c(0, 0, 0, 1, 0, 0, 0),
-         groep_3 = c(0, 0, 0, 0, 1, 1, 1),
-         kost = c(3, 5, 10, 0, 5, 5, 5))
+  mutate(
+    groep_1 = c(1, 1, 1, 0, 0, 0, 0),
+    groep_2 = c(0, 0, 0, 1, 0, 0, 0),
+    groep_3 = c(0, 0, 0, 0, 1, 1, 1),
+    kost = c(3, 5, 10, 0, 5, 5, 5)
+  )
 cg <- c(20, 30, 60)
 A <- data_vb_scaled %>%
   dplyr::select(starts_with("groep")) %>%
@@ -137,20 +140,22 @@ nb_groep <- sum(str_detect(colnames(data_vb_scaled), "groep"))
 c <- data_vb_scaled %>%
   dplyr::pull(kost)
 
-model <- MIPModel() %>% 
+model <- MIPModel() %>%
   add_variable(x[i], i = 1:nb_soort, type = "binary") %>%
-  add_variable(y[g], g = 1:nb_groep, type = "binary") %>% 
-  set_objective(sum_expr(w[j] * s[i, j] * x[i], i = 1:nb_soort,
-                         j = 1:nb_criteria),
-                sense = "max") %>% 
-  add_constraint(sum_expr(x[i] * c[i], i = 1:nb_soort) +
-                   sum_expr(y[g] * cg[g], g = 1:nb_groep) <= 110) %>% 
+  add_variable(y[g], g = 1:nb_groep, type = "binary") %>%
+  set_objective(
+    sum_expr(w[j] * s[i, j] * x[i], i = 1:nb_soort, j = 1:nb_criteria),
+    sense = "max"
+  ) %>%
+  add_constraint(
+    sum_expr(x[i] * c[i], i = 1:nb_soort) +
+      sum_expr(y[g] * cg[g], g = 1:nb_groep) <=
+      110
+  ) %>%
   add_constraint(x[i] * A[i, g] <= y[g], i = 1:nb_soort, g = 1:nb_groep)
 
-result <- model %>% 
+result <- model %>%
   solve_model(with_ROI("glpk", verbose = TRUE))
-
-
 ```
 
 ```{r}

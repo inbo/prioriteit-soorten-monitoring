@@ -27,28 +27,42 @@ Soort S7 is erg duur voor beide criteria.
 #voorbeeld https://github.com/rbensua/deaR
 ccr <- deaR::make_deadata(
   data_vb,
-  ni = 1, no = 2, dmus = 1, inputs = 4, outputs = 2:3)
+  ni = 1,
+  no = 2,
+  dmus = 1,
+  inputs = 4,
+  outputs = 2:3
+)
 model <- deaR::model_basic(ccr, rts = "crs", orientation = "io")
 efficiency <- deaR::efficiencies(model)
 # build the efficient frontier for the plot
-eff_frontier <- data_vb[round(efficiency,6) == 1, ] %>%
-  mutate(x = criterium_2/kost, y = criterium_1/kost) %>%
+eff_frontier <- data_vb[round(efficiency, 6) == 1, ] %>%
+  mutate(x = criterium_2 / kost, y = criterium_1 / kost) %>%
   dplyr::select(x, y)
 eff_frontier <- eff_frontier %>%
-  rbind(tibble(x = c(0, max(eff_frontier$x)),
-               y = c(max(eff_frontier$y), 0))) %>%
+  rbind(tibble(
+    x = c(0, max(eff_frontier$x)),
+    y = c(max(eff_frontier$y), 0)
+  )) %>%
   arrange(x)
 eff_frontier <- eff_frontier %>%
-  mutate(xend = data.table::shift(eff_frontier$x, n=1, type = "lead"),
-         yend = data.table::shift(eff_frontier$y, n=1, type = "lead")) %>%
+  mutate(
+    xend = data.table::shift(eff_frontier$x, n = 1, type = "lead"),
+    yend = data.table::shift(eff_frontier$y, n = 1, type = "lead")
+  ) %>%
   dplyr::filter(!is.na(xend))
 
 ggplot() +
-  geom_segment(data = eff_frontier, aes(x=x, y=y, xend = xend, yend = yend),
-               color = INBOtheme::inbo_palette(1)) +
-  geom_text(data = data_vb, aes(label = soort, x = criterium_2/kost,
-                         y = criterium_1/kost),
-            color = "black") +
+  geom_segment(
+    data = eff_frontier,
+    aes(x = x, y = y, xend = xend, yend = yend),
+    color = INBOtheme::inbo_palette(1)
+  ) +
+  geom_text(
+    data = data_vb,
+    aes(label = soort, x = criterium_2 / kost, y = criterium_1 / kost),
+    color = "black"
+  ) +
   theme_bw() +
   xlab("criterium_2/kost") +
   ylab("criterium_1/kost")
