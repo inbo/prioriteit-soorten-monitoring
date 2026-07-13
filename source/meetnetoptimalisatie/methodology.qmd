@@ -1,6 +1,6 @@
 ---
 params:
-  total_budget: 5000
+  total_budget: 50
 execute:
   echo: false
   warning: false
@@ -76,17 +76,8 @@ De laatste beperking definieëert alle beslissingsvariabelen als integere 0/1 va
 ```{r}
 #| include: false
 #| eval: false
-
-library(ompr)
-library(ROI)
-library(ROI.plugin.glpk)
-library(ompr.roi)
 #Maak de input data
-nb_meetnet <- nrow(meetnetten)
-nb_groepmeetnet <- length(unique(groepen$meetnet))
-nb_soort <- nrow(soort_scores)
-nb_groep <- length(unique(groepen$groep))
-nb_criteria <- nrow(s)
+
 # herschaalde score voor ieder meetnet i en criterium j
 get_priority_scores <- function(criterium = "EB") {
   name <- paste0("score", criterium)
@@ -115,6 +106,13 @@ get_priority_scores <- function(criterium = "EB") {
 s <- sapply(unique(priorities$criterium),
             FUN = function(x){get_priority_scores(x)})
 s <- t(s)
+
+#indices
+nb_meetnet <- nrow(meetnetten)
+nb_groepmeetnet <- length(unique(groepen$meetnet))
+nb_soort <- nrow(soort_scores)
+nb_groep <- length(unique(groepen$groep))
+nb_criteria <- nrow(s)
 # gewichten criteria
 w <- belang_criterium$belang
 
@@ -126,7 +124,10 @@ c_add <- meetnetten %>%
   left_join(groepen %>%
               dplyr::select(kost_addit, meetnet),
             join_by(meetnet == meetnet)) %>%
-  mutate(kost_addit = ifelse(is.na(kost_addit), 0, kost_addit)) %>%
+  #indien het meetnet niet in een groep zit, maken we de kost onhaalbaar hoog.
+  mutate(kost_addit = ifelse(is.na(kost_addit),
+                             10*params$total_budget,
+                             kost_addit)) %>%
   dplyr::pull(kost_addit)
 
 # groepskost
@@ -166,7 +167,14 @@ M <- groepen %>%
   count() %>%
   dplyr::pull(n) %>%
   max()
+```
 
+```{r}
+#oplossen met ompr package
+library(ompr)
+library(ROI)
+library(ROI.plugin.glpk)
+library(ompr.roi)
 model <- MIPModel() %>%
   add_variable(x_ind[i], i = 1:nb_meetnet, type = "binary") %>%
   add_variable(x_gro[i], i = 1:nb_meetnet, type = "binary") %>%
@@ -185,10 +193,48 @@ model <- MIPModel() %>%
                    1, s = 1:nb_soort) %>%
   add_constraint(sum_expr(G[g, i] * x_gro[i], i = 1:nb_meetnet) / M <= y[g],
                  g = 1:nb_groep) %>%
-  add_constraint(sum_expr(non_existing[i] * x_gro[i], i = 1:nb_meetnet) == 0) #deze zitten niet in een groep (eigelijk beter niet creëren in the first place)
-
-result <- model %>%
+  add_constraint(sum_expr(non_existing[i] * x_gro[i], i = 1:nb_meetnet) == 0) #deze zitten niet in een groep
+time_start <- Sys.time()
+resultompr <- model %>%
   solve_model(with_ROI("glpk", verbose = TRUE))
+time_end <- Sys.time()
+time_end - time_start
+save(result, "../data/result.Rdata")
+```
+
+```{r}
+library(CVXR)
+# We zetten het optimalisatieprobleem in de vorm 
+# max c^T x
+# st A * x <= b
+x_ind <- Variable(nb_meetnet, name = "xind",
+                 latex_name = "x^{ind}",
+                 boolean = TRUE)
+x_gro <- Variable(nb_meetnet, name = "xgro",
+                 latex_name = "x^{gro}",
+                 boolean = TRUE)
+y <-  Variable(nb_groep, name = "y",
+                 latex_name = "y",
+                 boolean = TRUE)
+objective <- Maximize(sum(w * (s %*% (x_ind + x_gro))))
+
+constraint1 <- sum(x_ind * c_ind) + sum(x_gro * c_add) +
+      sum(y * c_g) <=  B
+constraint2 <- S %*% (x_ind + x_gro) <= 1
+constraint3 <- (G %*% x_gro) / M <= y
+constraint4 <- non_existing %*% x_gro == 0
+problem <- Problem(objective, constraints = list(constraint1, constraint2,
+                                                 constraint3, constraint4))
+time_start <- Sys.time()
+resultcvxr <- CVXR::psolve(problem)
+time_end <- Sys.time()
+resultcvxr
+time_end - time_start
+x <- Variable(n)
+constraints <- list(A %*% x <= b)
+prob <- Problem(Minimize(t(c_vec) %*% x), constraints)
+result <- psolve(prob)
+check_solver_status(prob)
 ```
 
 ```{r}
