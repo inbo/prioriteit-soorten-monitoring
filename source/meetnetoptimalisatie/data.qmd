@@ -1,0 +1,311 @@
+---
+params:
+  total_budget: 5000
+execute:
+  echo: false
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+# Data exploratie 
+
+## Doelfunctie
+
+In de doelfunctie zal er getracht worden om een totaalscore te maximaliseren.
+Ieder meetnet heeft een score voor ieder van de criteria. 
+Meetnetten die hoog scoren op de belangrijkste criteria hebben een hogere kans om geselecteerd te worden.
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(inbodb)
+library(rprojroot)
+library(kableExtra)
+library(knitr)
+library(zeallot) # om meerdere dataframes uit een functie te halen
+source(file = find_root_file("source", "R", "lees_data.R",
+                     criterion =
+                       has_file("prioritering-soorten-monitoring.Rproj")))
+datafolder <- find_root_file("data", "oefendata.xlsx",
+                     criterion =
+                       has_file("prioritering-soorten-monitoring.Rproj"))
+c(soorten, meetnetten, soort_scores, groepen) %<-%
+  lees_data(datafolder)
+
+``` 
+
+Momenteel bekijken we alle soorten uit de vogelrichtlijn en de habitatrichtlijn die in @tbl-soorten worden getoond.
+
+
+```{r}
+#| label: tbl-soorten
+
+soorten %>%
+  kable(caption = "Overzicht van alle soorten.") %>%
+  kableExtra::kable_styling() %>%
+  kable_classic(full_width = T, position = "center") %>%
+  scroll_box(height = "250px")
+```
+
+Het belang van monitoring wordt voor ieder van de soorten ingeschat aan de hand van vijf verschillende criteria:
+
+- *Europees beschermd (EB)*: Soorten die voorkomen in de habitatrichtlijn (HRL) bijlage 2 hebben het hoogste belang, daarna soorten uit HRL bijlage 2 of vogelrichtlijn bijlage 1 (op hetzelfde niveau van belang), daarna vogelsoorten die niet voorkomen in VRL bijlage 1, en tot slot alle andere soorten die niet voorkomen in HRL bijlage 2 of 4. We kunnen dit samenvatten als HRL2 > HRL4 = VRL1 > geen VRL > geen HRL2 of 4 
+- *Rode lijst status (RL)*: We bekijken enkel de meest recente gevalideerde rode lijst status voor alle soorten (indien bechikbaar). Het balang van monitoring wordt het hoogst ingeschat voor ernstig bedreigde soorten, dan bedreigde, kwetsbare, gevoelige, en tot slot alle andere soorten. 'Alle andere soorten' omvatten zowel (regionaal) uitgestorven soorten, soorten voor dewelke er onvoldoende data is, en soorten die niet bedreigd zijn. Samengevat, geeft dit ernstig bedreigd > bedreigd > kwetsbaar > gevoelig > alle andere soorten.
+- *Habitattypische soorten (HTS)*: Habitattypische soorten krijgen een hoger belang dan niet-habitattypische soorten.
+- *Instandhoudingsdoelen (IHD)*: Soorten met instandhoudingsdoelen (IHD) krijgen een hoger belang dan soorten zonder instandhoudingsdoelen. De bron voor deze data is Appendix 3 van [deze publicatie](https://pureportal.inbo.be/en/publications/advies-over-de-nood-aan-specifiek-leefgebied-ter-realisatie-van-d/). Indien 'minimum populatiedoel volgens G-IHD' en/of 'Som S-IHD' gekwantificeerd is tijdens minstens één seizoen, dan stellen we dat de soort IHD heeft.
+- *Meetnet*: Soorten met een bestaand meetnet krijgen een hoger belang dan soorten waar nog geen soortenmeetnet voor bestaat. (Voorlopig houden we dit er in maar in principe zouden bestaande meetnetten een lagere kost moeten hebben omdat er geen meetnetontwerp meer moet gebeuren -> bestaande meetnetten zouden zowiezo met grotere kans gekozen worden door hun lagere kost?)
+
+@tbl-soorten-scores geeft een overzicht van alle criteria voor ieder van de soorten. 
+
+```{r}
+#| label: tbl-soorten-scores
+
+soort_scores %>%
+  dplyr::select(-taxonomische_groep, -wetgeving, -annex, -type_meetnet) %>%
+  kable(caption = "Overzicht van alle criteria voor alle soorten.",
+        col.names = c("naam_nl", "naam_wetenschappelijk", "RL", "EB", "HTS",
+                      "IHD", "meetnet")) %>%
+  kableExtra::kable_styling() %>%
+  kable_classic(full_width = T, position = "center") %>%
+  scroll_box(height = "250px")
+```
+
+Experten worden geconsulteerd om in te schatten hoe, binnen de verschillende criteria, het belang verschilt tussen de verschillende categorieën.
+Hiervoor wordt de Saaty schaal gebruikt (@tbl-SaatyScale) @saaty2005.
+
+```{r}
+#| label: tbl-SaatyScale
+
+tibble(Scale =
+         c("Extremely preferred", "Very strong to extremely preferred",
+           "Very strongly preferred", "Strongly to very strongly preferred",
+           "Strongly preferred", "Moderately to strongly preferred",
+           "Moderately preferred", "Equally to moderately preferred",
+           "Equally preferred"),
+       Rating = seq(9,1)
+) %>%
+  kable(caption = "Saaty schaal.",
+        col.names = c("Schaal", "Score")) %>%
+  kableExtra::kable_styling() %>%
+  kable_classic(full_width = T, position = "center") %>%
+  scroll_box(height = "250px")
+```
+
+De Saaty scores voor ieder van de vijf criteria worden getoond in  @tbl-Saaty-EB tot @tbl-Saaty-meetnet.
+De eerste kolommen tonen de Saaty schaal inschattingen van de experten. 
+De laatste kolom toont de Saaty score, berekend met het *AHPWR* package.
+
+```{r }
+# ruwe Saaty schaal scores - input van experts
+forall <- tibble(criterium = c("EB", "RL", "HTS", "IHD", "meetnet"),
+       range = c("B9:F14", "B17:E21", "B25:C27", "B30:C32", "B35:C37"))
+read_saaty_data <- function(criterium = "EB", range = "B9:F14") {
+  m <- readxl::read_excel(datafolder, sheet = "criterium_belang",
+                          range = range)
+  return(m)
+}
+#maak "priorities" object
+source(find_root_file("source", "R", "AHP.R",
+                  criterion =
+                    has_file("prioritering-soorten-monitoring.Rproj")))
+```
+
+```{r }
+#| label: tbl-Saaty-EB
+
+c <- "EB"
+m <- read_saaty_data(criterium = c,
+                range = forall %>%
+                  dplyr::filter(criterium == c) %>%
+                  dplyr::pull(range))
+m %>%
+  mutate(row = colnames(m)) %>%
+  left_join(priorities %>%
+              dplyr::filter(criterium == c) %>%
+              dplyr::select(-criterium),
+            by = join_by(row == level)) %>%
+  dplyr::select(row, colnames(m), priority) %>%
+  kable(caption = "Saaty schaal inschattingen van experten en berekende Saaty score voor Europees belang.",
+        col.names = c("", colnames(m), "prioriteitsscore"),
+        digits = 2) %>%
+  kableExtra::kable_styling() %>%
+  kableExtra::column_spec(ncol(m) + 2, border_left = TRUE) %>%
+  kableExtra::column_spec(1, border_right = TRUE)
+```
+
+```{r }
+#| label: tbl-Saaty-RL
+
+c <- "RL"
+m <- read_saaty_data(criterium = c,
+                range = forall %>%
+                  dplyr::filter(criterium == c) %>%
+                  dplyr::pull(range))
+m %>%
+  mutate(row = colnames(m)) %>%
+  left_join(priorities %>%
+              dplyr::filter(criterium == c) %>%
+              dplyr::select(-criterium),
+            by = join_by(row == level)) %>%
+  dplyr::select(row, colnames(m), priority) %>%
+  kable(caption = "Saaty schaal inschattingen van experten en berekende Saaty score voor de rode lijst categorieën.",
+        col.names = c("", colnames(m), "prioriteitsscore"),
+        digits = 2) %>%
+  kableExtra::kable_styling() %>%
+  kableExtra::column_spec(ncol(m) + 2, border_left = TRUE) %>%
+  kableExtra::column_spec(1, border_right = TRUE)
+```
+
+```{r }
+#| label: tbl-Saaty-HTS
+
+c <- "HTS"
+m <- read_saaty_data(criterium = c,
+                range = forall %>%
+                  dplyr::filter(criterium == c) %>%
+                  dplyr::pull(range))
+m %>%
+  mutate(row = colnames(m)) %>%
+  left_join(priorities %>%
+              dplyr::filter(criterium == c) %>%
+              dplyr::select(-criterium),
+            by = join_by(row == level)) %>%
+  dplyr::select(row, colnames(m), priority) %>%
+  kable(caption = "Saaty schaal inschattingen van experten en berekende Saaty score voor habitattypische soorten.",
+        col.names = c("", colnames(m), "prioriteitsscore"),
+        digits = 2) %>%
+  kableExtra::kable_styling() %>%
+  kableExtra::column_spec(ncol(m) + 2, border_left = TRUE) %>%
+  kableExtra::column_spec(1, border_right = TRUE)
+```
+
+```{r }
+#| label: tbl-Saaty-IHD
+
+c <- "IHD"
+m <- read_saaty_data(criterium = c,
+                range = forall %>%
+                  dplyr::filter(criterium == c) %>%
+                  dplyr::pull(range))
+m %>%
+  mutate(row = colnames(m)) %>%
+  left_join(priorities %>%
+              dplyr::filter(criterium == c) %>%
+              dplyr::select(-criterium),
+            by = join_by(row == level)) %>%
+  dplyr::select(row, colnames(m), priority) %>%
+  kable(caption = "Saaty schaal inschattingen van experten en berekende Saaty score voor instandhoudingsdoelen.",
+        col.names = c("", colnames(m), "prioriteitsscore"),
+        digits = 2) %>%
+  kableExtra::kable_styling() %>%
+  kableExtra::column_spec(ncol(m) + 2, border_left = TRUE) %>%
+  kableExtra::column_spec(1, border_right = TRUE)
+```
+
+```{r }
+#| label: tbl-Saaty-meetnet
+
+c <- "meetnet"
+m <- read_saaty_data(criterium = c,
+                range = forall %>%
+                  dplyr::filter(criterium == c) %>%
+                  dplyr::pull(range))
+m %>%
+  mutate(row = colnames(m)) %>%
+  left_join(priorities %>%
+              dplyr::filter(criterium == c) %>%
+              dplyr::select(-criterium),
+            by = join_by(row == level)) %>%
+  dplyr::select(row, colnames(m), priority) %>%
+  kable(caption = "Saaty schaal inschattingen van experten en berekende Saaty score voor meetnet of niet.",
+        col.names = c("", colnames(m), "prioriteitsscore"),
+        digits = 2) %>%
+  kableExtra::kable_styling() %>%
+  kableExtra::column_spec(ncol(m) + 2, border_left = TRUE) %>%
+  kableExtra::column_spec(1, border_right = TRUE)
+```
+
+Tot slot zal er ook aan ieder van de vijf criteria een gewicht worden toegekend $w_c$ (@tbl-gewichten) die het belang aanduiden van ieder van de criteria.
+Een hoger gewicht wil zeggen dat het belang van het criterium hoger is in de keuze van het meetnet.
+Merk op dat deze gewichten eventueel ook met Saaty schaal scores hadden kunnen opgemaakt worden.
+
+```{r }
+#| label: tbl-gewichten
+
+readxl::read_excel(datafolder, sheet = "criterium_belang",
+                          range = "A1:C6") %>%
+  kable(caption = "Gewichten die het belang bepalen van ieder van de criteria in de doelfunctie.",
+        digits = 2) %>%
+  kableExtra::kable_styling()
+```
+
+## Kostenstructuur
+
+Er moet, voor ieder meetnet, een kost bepaald worden door de experten om het meetnet uit te rollen (zie @tbl-indiv-kost).
+Deze kost omvat typisch de kost voor monitoring van de soort (= 0 wanneer er een soortmeetnet is), van de kwaliteit van het leefgebieden van de  kwantiteit van het leefgebied.
+@tbl-indiv-kost toont deze kosten per meetnet.
+Merk op dat er `r nrow(soorten)` zijn en `r nrow(meetnetten)`; voor sommige soorten zijn er meerdere soorten van meetnetten mogelijk (bvb een traditioneel meetnet versus een eDNA meetnet).
+
+We laten ook een iets complexere kostenstructuur voor monitoring toe waarbij er *monitoringgroepen* kunnen gedefiniëerd worden.
+We stellen voor om de kost van monitoring binnen een monitoringgroep te formuleren als:
+
+-   een vaste kost per monitoringgroep (zowel opstartkosten als kosten om de monitoring de komende jaren uit te voeren).
+-   een bijkomende kost per soort binnen de monitoringgroep
+
+De monitoringgroepen en bijhorende kostenstructuur wordt getoond in @tbl-groepen-kost.
+Deze kostenstructuur kan bijvoorbeeld handig zijn voor soorten wiens voorkomen overlapt in tijd en ruimte.
+Indien de kwaliteit en kwantiteit van het leefgebied voor één soort gemonitord wordt, zal de additionele kost om een soort uit de monitoringsgroep toe te voegen lager zijn.
+
+Bij het definiëren van monitoringgroepen is er echter wel een belangrijke beperking; ieder meetnet mag in maximum één monitoringgroep zitten.
+`r ifelse(nrow(groepen) > length(unique(groepen$meetnet)), paste0("Deze beperking wordt niet gerespecteerd voor de volgende meetnetten: ", cat(groepen %>% group_by(meetnet) %>% count() %>% dplyr::filter(n > 1) %>% dplyr::pull(meetnet), sep = ", ")), "Deze beperking wordt gerespecteerd in de data.")`
+
+```{r}
+#| label: tbl-indiv-kost
+
+meetnetten %>%
+  dplyr::select(naam_nl, meetnet, type_meeetnet,
+  bestaand, kost_indiv) %>%
+  kable(caption = "Overzicht van de kost van een individueel meetnet.",
+        col.names = c("Soort", "Naam meetnet", "Type meetnet", "Bestaand meetnet", "Individuele kost")) %>%
+  kableExtra::kable_styling() %>%
+  kable_classic(full_width = T, position = "center") %>%
+  scroll_box(height = "250px")
+```
+
+```{r}
+#| label: tbl-groepen-kost
+
+groepen %>%
+  kable(caption = "Overzicht van de kost van de monitoringgroepen. De groepskost wordt slechts één keer betaald, ongeacht het aantal soorten die binnen de monitoringsgroep geselecteerd worden voor monitoring.",
+        col.names = c("Naam groep", "Groepskost", "Naam meetnet",
+                      "Type meetnet", "Additionele kost")) %>%
+  kableExtra::kable_styling() %>%
+  kable_classic(full_width = T, position = "center") %>%
+  scroll_box(height = "250px")
+conflicts <-
+  meetnetten %>%
+  left_join(groepen %>%
+          mutate(groepskost = kost_groep + kost_addit) %>%
+          dplyr::select(meetnet, groepskost)) %>%
+  dplyr::filter(!is.na(groepskost) & groepskost < kost_indiv)
+```
+
+
+Het is belangrijk om te beseffen dat, indien de kost van een individueel meetnet hoger is dan de som van de vaste kost van de monitoringsgroep waartoe het behoort en de additionele kost, er in het optimalisatiemodel steeds gekozen zal worden om de monitoringsgroep te activeren, indien het meetnet voldoende interessant is voor selectie.
+Hoewel dit niet per se fout is, allerteren we de experts hier wel op.
+In de huidige dataset komt dit `r nrow(conflicts)` keer voor (zie @tbl-groepskost-conflict).
+
+
+```{r}
+#| label: tbl-groepskost-conflict
+
+conflicts %>%
+  dplyr::select(meetnet, kost_indiv, groepskost) %>%
+  kable(caption = "meetnetten waarvoor de kost in groep lager is dan de individuele kost.",
+        col.names = c("Naam meetnet",
+                      "individuele kost", "Groepskost")) %>%
+  kableExtra::kable_styling() %>%
+  kable_classic(full_width = T, position = "center") %>%
+  scroll_box(height = "250px")
+```

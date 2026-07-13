@@ -1,0 +1,206 @@
+---
+params:
+  total_budget: 5000
+execute:
+  echo: false
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(inbodb)
+library(rprojroot)
+library(kableExtra)
+library(knitr)
+library(zeallot) # om meerdere dataframes uit een functie te halen
+source(file = find_root_file("source", "R", "lees_data.R",
+                     criterion =
+                       has_file("prioritering-soorten-monitoring.Rproj")))
+datafolder <- find_root_file("data", "oefendata.xlsx",
+                     criterion =
+                       has_file("prioritering-soorten-monitoring.Rproj"))
+c(soorten, meetnetten, soort_scores, groepen) %<-%
+  lees_data(datafolder)
+#priorities object
+source(find_root_file("source", "R", "AHP.R",
+                  criterion =
+                    has_file("prioritering-soorten-monitoring.Rproj")))
+belang_criterium <- readxl::read_excel(datafolder,
+                                       sheet = "criterium_belang",
+                          range = "A1:C6")
+
+``` 
+# Methodologie
+
+Het model ziet er als volgt uit:
+
+Beslissingsvariabelen:
+
+-   $x^{ind}_i$ is 1 als meetnet $i$ geselecteerd wordt als individueel meetnet en anders is $x^{ind}_i$ gelijk aan 0 $(i \in \{1...n^m\})$, met $n^m$ het aantal meetnetten.
+-   $x^{gro}_i$ is 1 als meetnet $i$ geselecteerd wordt in een monitoringsgroep en anders is $x^{ind}_i$ gelijk aan 0 $(i \in \{1...n^m\})$. Merk op dat niet ieder meetnet noodzakelijk deel uitmaakt van een monitoringsgroep. Beslissingsvariabele $x^{gro}_i$ hoeft dus niet voor ieder meetnet $i$ aangemaakt te worden.
+-   $y_g$ is 1 als monitoringsgroep $g$ geactiveerd wordt en anders is $y_g$ gelijk aan 0 $(g \in \{1...n^g\})$, met $n^g$ het aantal meetnetgroepen.
+
+Parameters:
+
+-   $p_{ij}$ is de score van meetnet $i$ op criterium $j$ $(i \in \{1...n_m\}, j \in \{1...5\})$. De ruwe scores staan beschreven in @tbl-Saaty-EB tot @tbl-Saaty-meetnet. Per criterium $j$  worden de scores herschaald door te delen door de som van de scores van alle meetnetten. Op die manier sommeren de scores binnen ieder criterium tot 1 zodat de criteria eerlijk tegen elkaar kunnen afgewogen worden.
+-   $w_j$ is het gewicht dat we aan criterium $j$ geven $(j \in \{1...5\})$. Als we criterium $j$ twee keer zo belangrijk vinden als criterium $j'$, kiezen we bijvoorbeeld $w_j=2, w_{j'}=1$.
+-   $c^{ind}_i$ is de kost om meetnet $i$ als individueel meetnet uit te voeren met $(i \in \{1...n^m\})$.
+-   $c^{gro}_g$ is de vaste kost om monitoringsgroep $g$ te activeren $(g \in \{1...n^g\})$.
+-   $c^{add}_i$ is de additionele kost om een meetnet $i$ binnen een geactiveerde monitoringsgroep uit te voeren $(i \in \{1...n^{m}\})$. Merk op dat niet ieder meetnet noodzakelijk deel uitmaakt van een monitoringsgroep. Kost $c^{add}_i$ hoeft dus niet voor ieder meetnet $i$ bepaald te worden.
+- $S_{si}$ Een 0-1 matrix die gelijk is aan 1 indien meetnet $i$ betrekking heeft op soort $s$ en anders 0 is $(i \in \{1...n^m\}, s \in \{1...n^s\})$. Met $n^s$ het aantal soorten.
+- $B$ is het totaalbudget voor monitoring
+- $M$ is een groot getal, minstens het aantal meetnetten in de grootste monitoringgroep
+
+
+\begin{equation*} 
+\begin{aligned}
+max & \sum_{i, j}(w_{j} * s_{ij} * (x^{ind}_{i} + x^{gro}_i))\\
+s.t. &  \\
+ & \sum_i (c^{ind}_i * x^{ind}_i + c^{add}_i * x^{gro}_i) + \sum_g (c^{gro}_g * y_g)  \leq B & (1)\\
+ & \sum_i S_{si}*(x^{ind}_i + x^{gro}_i)  \leq 1 &  \forall s (2)\\
+ & y_g \geq \frac{ \sum_{i\text{ in }g} x^{gro}_i}{M} & \forall g (3)\\
+ &  x^{ind}_i, x^{gro}_i, y_g \in \{0, 1\} & \forall g, i (4)
+ \end{aligned}
+\end{equation*}
+
+De doelfunctie maximaliseert de gewogen som van scores van geselecteerde meetnetten.
+De eerste beperking is de budgetbeperking.
+De som van de kosten alle geselecteerde meetnetten moet kleiner of gelijk zijn aan het totaalbudget.
+De tweede beperking zorgt er voor dat er voor iedere soort $s$ maximum 1 meetnet geselecteerd wordt, ofwel als individueel meetnet, ofwel binnen een monitoringsgroep.
+De derde beperking zorgt er voor dat, zodra minstens één meetnet geselecteerd wordt binnen een monitoringsgroep $g$, $y_g$ gelijk zal zijn aan 1.
+De laatste beperking definieëert alle beslissingsvariabelen als integere 0/1 variabelen.
+
+```{r}
+#| include: false
+#| eval: false
+
+library(ompr)
+library(ROI)
+library(ROI.plugin.glpk)
+library(ompr.roi)
+#Maak de input data
+nb_meetnet <- nrow(meetnetten)
+nb_groepmeetnet <- length(unique(groepen$meetnet))
+nb_soort <- nrow(soort_scores)
+nb_groep <- length(unique(groepen$groep))
+nb_criteria <- nrow(s)
+# herschaalde score voor ieder meetnet i en criterium j
+get_priority_scores <- function(criterium = "EB") {
+  name <- paste0("score", criterium)
+  scores <- soort_scores %>%
+    left_join(priorities %>%
+                dplyr::filter(criterium == {{criterium}}) %>%
+                mutate(level = ifelse(level == "NA", NA, level),
+                       level = ifelse(level %in% c("TRUE", "FALSE"), as.logical(level), level)) %>%
+                rename("{name}" := priority) %>%
+                dplyr::select(-criterium),
+              join_by({{criterium}} == level))
+  meetnetscores <- meetnetten %>%
+    left_join(scores %>%
+                dplyr::select(naam_wetenschappelijk, {{name}})) %>%
+    dplyr::pull({{name}}) %>%
+    as.numeric()
+  #delen door de som en gewichten toepassen
+  meetnetscores <- meetnetscores / sum(meetnetscores) *
+    (belang_criterium %>%
+       dplyr::filter(criterium == criterium) %>%
+       dplyr::pull(belang) %>%
+       as.numeric())
+  return(meetnetscores)
+}
+
+s <- sapply(unique(priorities$criterium),
+            FUN = function(x){get_priority_scores(x)})
+s <- t(s)
+# gewichten criteria
+w <- belang_criterium$belang
+
+# individuele kost per meetnet
+c_ind <- meetnetten$kost_indiv
+
+# additionele kost per meetnet
+c_add <- meetnetten %>%
+  left_join(groepen %>%
+              dplyr::select(kost_addit, meetnet),
+            join_by(meetnet == meetnet)) %>%
+  mutate(kost_addit = ifelse(is.na(kost_addit), 0, kost_addit)) %>%
+  dplyr::pull(kost_addit)
+
+# groepskost
+c_g <- groepen %>%
+  dplyr::select(groep, kost_groep) %>%
+  distinct() %>%
+  dplyr::pull(kost_groep)
+
+# Matrix die 1 is indien meetnet i bij soort s hoort (rijen = soorten, kolommen = meetnet)
+soort_meetnet <- meetnetten %>%
+  dplyr::select(meetnet, naam_nl) %>%
+  mutate(value = 1) %>%
+  pivot_wider(id_cols = naam_nl,
+              names_from = meetnet,
+              values_from = value) %>%
+  mutate_all(.funs = function(x){ifelse(is.na(x), 0, x)})
+S <- unname(as.matrix(soort_meetnet[,-1]))
+# Matrix die 1 is indien meetnet i bij monitoringgroep g hoort (rijen = groepen, kolommen = meetnetten).
+groep_meetnet <- meetnetten %>%
+  left_join(groepen %>%
+              dplyr::select(groep, meetnet),
+            join_by(meetnet == meetnet)) %>%
+  mutate(value = 1) %>%
+  pivot_wider(id_cols = groep,
+              names_from = meetnet,
+              values_from = value) %>%
+  mutate_all(.funs = function(x){ifelse(is.na(x), 0, x)})
+G <- unname(as.matrix(groep_meetnet[-1,-1]))
+non_existing <-  unname(as.matrix(groep_meetnet[1,-1]))
+
+# B; totaalbudget
+B <- params$total_budget
+
+# M; grootgetal
+M <- groepen %>%
+  group_by(groep) %>%
+  count() %>%
+  dplyr::pull(n) %>%
+  max()
+
+model <- MIPModel() %>%
+  add_variable(x_ind[i], i = 1:nb_meetnet, type = "binary") %>%
+  add_variable(x_gro[i], i = 1:nb_meetnet, type = "binary") %>%
+  add_variable(y[g], g = 1:nb_groep, type = "binary") %>%
+  set_objective(
+    sum_expr(w[j] * (s[j, i] * (x_ind[i] + x_gro[i])),
+             i = 1:nb_meetnet, j = 1:nb_criteria),
+    sense = "max"
+  ) %>%
+  add_constraint(
+    sum_expr(x_ind[i] * c_ind[i] + x_gro[i] * c_add[i], i = 1:nb_meetnet) +
+      sum_expr(y[g] * c_g[g], g = 1:nb_groep) <=
+      B
+  ) %>%
+  add_constraint(sum_expr(S[s, i] * (x_ind[i] + x_gro[i]), i = 1:nb_meetnet) <=
+                   1, s = 1:nb_soort) %>%
+  add_constraint(sum_expr(G[g, i] * x_gro[i], i = 1:nb_meetnet) / M <= y[g],
+                 g = 1:nb_groep) %>%
+  add_constraint(sum_expr(non_existing[i] * x_gro[i], i = 1:nb_meetnet) == 0) #deze zitten niet in een groep (eigelijk beter niet creëren in the first place)
+
+result <- model %>%
+  solve_model(with_ROI("glpk", verbose = TRUE))
+```
+
+```{r}
+#| label: tbl-mip-uitbreiding
+#| tbl-cap: "Geselecteerde meetnetten. De twee laatste kolommen tonen of het meetnet als individueel meetnet of als deel van een monitoringsgroep geselecteerd werd."
+#| eval: false 
+
+meetnetten %>%
+  mutate(indiv = unname(result$solution)[1:nb_meetnet],
+         groep = unname(result$solution)[(nb_meetnet + 1) : (2 * nb_meetnet)]) %>%
+  dplyr::filter(indiv == 1 | groep == 1) %>%
+  dplyr::select(naam_nl, meetnet, indiv, groep) %>%
+  knitr::kable(col.names = c("Soort", "Meetnet", "Indiv. meetnet",
+                             "Monitoringsgroep"))
+```

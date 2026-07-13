@@ -51,3 +51,4 @@ renv/library
 rsconnect/
 vignettes/*.html
 vignettes/*.pdf
+.positai

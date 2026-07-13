@@ -1,0 +1,15 @@
+
+# Inleiding
+
+In dit rapport beschrijven we een procedure om de monitoring van soorten allereerst te prioriteren en een finale keuze te maken over welke soorten gemonitord zullen worden, binnen een beperkt budget.
+
+Het rapport begint met een overzicht van de ruwe data:
+  
+- De soortenmeetnetten waaruit een selectie gemaakt moet worden
+- De criteria die gebruikt worden om het belang van ieder soortenmeetnet in te schatten
+- De benodigde budgetten voor ieder van de soortenmeetnetten
+- Eventuele interacties tussen soorten, soortenmeetnetten, en budgetten.
+
+Door middel van lineair programmeren zullen we trachten om de belangrijkste meetnetten te selecteren, onder een budgetbeperking.
+
+
