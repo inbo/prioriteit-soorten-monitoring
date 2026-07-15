@@ -8,3 +8,5 @@ output
 site_libs
 
 /.quarto/
+
+**/*.quarto_ipynb

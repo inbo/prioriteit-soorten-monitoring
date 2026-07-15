@@ -73,9 +73,11 @@ De tweede beperking zorgt er voor dat er voor iedere soort $s$ maximum 1 meetnet
 De derde beperking zorgt er voor dat, zodra minstens één meetnet geselecteerd wordt binnen een monitoringsgroep $g$, $y_g$ gelijk zal zijn aan 1.
 De laatste beperking definieëert alle beslissingsvariabelen als integere 0/1 variabelen.
 
+# Resultaten
+
 ```{r}
 #| include: false
-#| eval: false
+#| eval: true
 #Maak de input data
 
 # herschaalde score voor ieder meetnet i en criterium j
@@ -170,6 +172,8 @@ M <- groepen %>%
 ```
 
 ```{r}
+#| eval: false
+#| include: false
 #oplossen met ompr package
 library(ompr)
 library(ROI)
@@ -199,10 +203,32 @@ resultompr <- model %>%
   solve_model(with_ROI("glpk", verbose = TRUE))
 time_end <- Sys.time()
 time_end - time_start
-save(result, "../data/result.Rdata")
+save(resultompr,
+     file = find_root_file("data", "result.Rdata",
+                           criterion =
+                             has_file("prioritering-soorten-monitoring.Rproj")))
 ```
 
+
 ```{r}
+#| label: tbl-mip-uitbreiding
+#| tbl-cap: "Geselecteerde meetnetten. De twee laatste kolommen tonen of het meetnet als individueel meetnet of als deel van een monitoringsgroep geselecteerd werd."
+#| eval: false
+#| include: false
+
+meetnetten %>%
+  mutate(indiv = unname(resultompr$solution)[1:nb_meetnet],
+         groep = unname(resultompr$solution)[
+           (nb_meetnet + 1) : (2 * nb_meetnet)]) %>%
+  dplyr::filter(indiv == 1 | groep == 1) %>%
+  dplyr::select(naam_nl, meetnet, indiv, groep) %>%
+  knitr::kable(col.names = c("Soort", "Meetnet", "Indiv. meetnet",
+                             "Monitoringsgroep"))
+```
+
+
+```{r}
+#| include: false
 library(CVXR)
 # We zetten het optimalisatieprobleem in de vorm 
 # max c^T x
@@ -226,27 +252,59 @@ constraint4 <- non_existing %*% x_gro == 0
 problem <- Problem(objective, constraints = list(constraint1, constraint2,
                                                  constraint3, constraint4))
 time_start <- Sys.time()
-resultcvxr <- CVXR::psolve(problem)
+resultcvxr <- CVXR::psolve(problem, solver = "GLPK_MI", verbose = TRUE)
 time_end <- Sys.time()
 resultcvxr
 time_end - time_start
-x <- Variable(n)
-constraints <- list(A %*% x <= b)
-prob <- Problem(Minimize(t(c_vec) %*% x), constraints)
-result <- psolve(prob)
-check_solver_status(prob)
+status(problem)
 ```
 
-```{r}
-#| label: tbl-mip-uitbreiding
-#| tbl-cap: "Geselecteerde meetnetten. De twee laatste kolommen tonen of het meetnet als individueel meetnet of als deel van een monitoringsgroep geselecteerd werd."
-#| eval: false 
+De oplossing is `r ifelse(status(problem)=="optimal", "optimaal", "niet optimaal")` met een objectiefwaarde van `r round(resultcvxr, 2)`.
+@tbl-mip-result toont de geselecteerde meetnetten.
 
+```{r}
+#| label: tbl-mip-result
+#| tbl-cap: "Geselecteerde meetnetten. De twee laatste kolommen tonen of het meetnet als individueel meetnet of als deel van een monitoringsgroep geselecteerd werd."
+#| eval: true
+
+meetnetten <- meetnetten %>%
+  mutate(indiv = as.numeric(value(x_ind)),
+         groep = as.numeric(value(x_gro)))
 meetnetten %>%
-  mutate(indiv = unname(result$solution)[1:nb_meetnet],
-         groep = unname(result$solution)[(nb_meetnet + 1) : (2 * nb_meetnet)]) %>%
   dplyr::filter(indiv == 1 | groep == 1) %>%
   dplyr::select(naam_nl, meetnet, indiv, groep) %>%
   knitr::kable(col.names = c("Soort", "Meetnet", "Indiv. meetnet",
                              "Monitoringsgroep"))
 ```
+
+`r ifelse(sum(value(y)) == 0, "Er werden geen meetnetten geselecteerd in een monitoringsgroep.", ifelse(sum(value(y)) == 1, "Er werd één monitoringsgroep geselecteerd (@tbl-monitoringsgroepen-selectie).", paste0("Er werden ", sum(value(y)), " monitoringsgroepen geselecteerd (@tbl-monitoringsgroepen-selectie).")))`
+
+```{r}
+#| label: tbl-monitoringsgroepen-selectie
+#| tbl-cap: "Geselecteerde monitoringsgroep(en) en meetnetten binnen de groep(en) die geselecteerd werden."
+#| eval: !expr "sum(value(y)) != 0"
+
+geselecteerd_groepen <- groepen %>%
+  left_join(tibble(groep = unique(groepen$groep),
+                   geselecteerd = as.numeric(value(y)))) %>%
+  dplyr::filter(geselecteerd == 1) %>%
+  dplyr::select(-geselecteerd) %>%
+  left_join(tibble(meetnet = unique(meetnetten$meetnet),
+                   geselecteerd = as.numeric(value(x_gro)))) 
+geselecteerd_groepen %>%
+  kable(caption = "Overzicht van geselecteerde monitoringsgroepen en geselecteerde meetnetten binnen deze monitoringsgroepen.")
+
+total_cost <- (meetnetten %>%
+  dplyr::filter(indiv == 1) %>%
+  dplyr::pull(kost_indiv) %>% sum()) +
+  (geselecteerd_groepen %>%
+     dplyr::filter(geselecteerd == 1) %>%
+     dplyr::pull(kost_addit) %>% sum()) +
+  (geselecteerd_groepen %>%
+     group_by(groep) %>%
+     summarize(kost = unique(kost_groep)) %>%
+     dplyr::pull(kost) %>% sum())
+```
+
+
+De totale kost van de geselecteerde meetnetten is `r total_cost`, het totale budget is `r params$total_budget`.
